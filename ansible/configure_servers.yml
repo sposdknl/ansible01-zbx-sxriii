@@ -1,0 +1,78 @@
+---
+# configure_servers.yml
+# Ansible playbook pro instalaci a konfiguraci Zabbix Agent2 verze 7.0 LTS
+# Používá kolekci community.zabbix
+#
+# Spuštění:
+#   ansible-playbook -i inventory.ini -l bastion configure_servers.yml
+
+- name: Install and configure Zabbix Agent2 v7.0 LTS
+  hosts: all
+  become: yes
+
+  vars:
+    # ============================================================
+    # Zabbix server – IP adresa Zabbix Appliance (eth1 interface)
+    # ============================================================
+    zabbix_server_ip: "192.168.56.10"
+
+    # Zabbix Agent2 verze 7.0 LTS
+    zabbix_agent_version: "7.0"
+    zabbix_agent2: true                   # true = Agent2 (druhá generace)
+
+    # HostMetadata – používá se pro auto-registrační pravidlo v Zabbixu
+    # Hodnotu uprav dle svého zadání / jména
+    zabbix_agent_hostmetadata: "linux ubuntu bastion student"
+
+    # Základní konfigurace agenta
+    zabbix_agent_server: "{{ zabbix_server_ip }}"
+    zabbix_agent_serveractive: "{{ zabbix_server_ip }}"
+    zabbix_agent_hostname: "{{ inventory_hostname }}"
+
+    # Přístupové porty
+    zabbix_agent_listenport: 10050
+
+    # Logování
+    zabbix_agent_logfile: "/var/log/zabbix/zabbix_agent2.log"
+    zabbix_agent_logfilesize: 10
+
+  roles:
+    - role: community.zabbix.zabbix_agent
+
+  # Explicitní task pro ověření, že HostMetadata je správně nastavena
+  # (community.zabbix role ji nastavuje přes vars výše, tento task slouží jako kontrola)
+  post_tasks:
+
+    - name: Verify HostMetadata is set in agent config
+      ansible.builtin.shell: >
+        grep -i "HostMetadata" /etc/zabbix/zabbix_agent2.conf
+      register: hostmeta_check
+      changed_when: false
+
+    - name: Show HostMetadata config line
+      ansible.builtin.debug:
+        msg: "{{ hostmeta_check.stdout }}"
+
+    - name: Ensure Zabbix Agent2 service is enabled and running
+      ansible.builtin.systemd:
+        name: zabbix-agent2
+        state: started
+        enabled: yes
+
+    - name: Check Zabbix Agent2 service status
+      ansible.builtin.command: systemctl status zabbix-agent2
+      register: agent_status
+      changed_when: false
+
+    - name: Print agent service status
+      ansible.builtin.debug:
+        msg: "{{ agent_status.stdout_lines }}"
+
+    - name: Copy agent config to /opt/repo/config/ for Git commit
+      ansible.builtin.copy:
+        src: /etc/zabbix/zabbix_agent2.conf
+        dest: /opt/repo/config/zabbix_agent2.conf
+        remote_src: yes
+        owner: vagrant
+        group: vagrant
+        mode: '0644'

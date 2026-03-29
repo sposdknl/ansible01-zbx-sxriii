@@ -1,0 +1,52 @@
+---
+# ansible_provision.yml
+# Spouštěno automaticky Vagrantem nebo ručně pro prvotní provisioning Bastion VM
+
+- name: Provision Bastion-ansible VM
+  hosts: localhost
+  connection: local
+  become: yes
+
+  vars:
+    # ====================================================
+    # UPRAV: Vlož URL svého GitHub Classroom repozitáře
+    # ====================================================
+    git_repo_url: "https://github.com/YOUR_GITHUB_CLASSROOM_ORG/YOUR_REPO_NAME.git"
+    repo_dest: "/opt/repo"
+    git_branch: "main"
+
+  tasks:
+
+    - name: Ensure git is installed
+      ansible.builtin.apt:
+        name: git
+        state: present
+        update_cache: yes
+
+    - name: Ensure ansible dependencies are installed
+      ansible.builtin.apt:
+        name:
+          - python3-pip
+          - python3-venv
+        state: present
+
+    - name: Install community.zabbix Ansible collection
+      ansible.builtin.command:
+        cmd: ansible-galaxy collection install community.zabbix
+      become_user: root
+      changed_when: true
+
+    - name: Cloning Git repository
+      ansible.builtin.git:
+        repo: "{{ git_repo_url }}"
+        dest: "{{ repo_dest }}"
+        version: "{{ git_branch }}"
+        force: yes
+      # Toto je Task, jehož název se kontroluje – název ponechej přesně takto
+
+    - name: Set correct ownership of repo directory
+      ansible.builtin.file:
+        path: "{{ repo_dest }}"
+        owner: vagrant
+        group: vagrant
+        recurse: yes
